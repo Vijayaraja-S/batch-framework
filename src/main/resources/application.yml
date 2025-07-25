@@ -1,0 +1,27 @@
+spring:
+  application:
+    name: batch-framework
+
+  datasource:
+    url: jdbc:postgresql://localhost:5432/batch_framework
+    username: adsuser
+    password: AdS@3421
+    driver-class-name: org.postgresql.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: update
+
+
+
+jobs:
+  max-audit-job: 10
+  max-search-job: 10
+  max-base-job: 10
+  max-ingestion-report-job: 10
+  max-chain-of-custody-report-job: 3
+  max-chain-of-custody-job: 3
+  max-background-search-job: 1
+  max-materialized-view-activity: 2
+  max-ingestion-validation-coc-report-job: 10
+  max-values-list-sync-job: 2

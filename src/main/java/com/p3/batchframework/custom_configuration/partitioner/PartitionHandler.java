@@ -10,7 +10,6 @@ import org.springframework.stereotype.Component;
 @Slf4j
 public class PartitionHandler extends AbstractPartitionHandler {
 
-
   @Override
   public @NonNull Map<String, ExecutionContext> partition(int gridSize) {
     return super.partition(gridSize);
