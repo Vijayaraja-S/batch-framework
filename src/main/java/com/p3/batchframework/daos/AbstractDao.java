@@ -1,6 +1,10 @@
 package com.p3.batchframework.daos;
 
 
+import com.p3.batchframework.persistence.repository.JobInstanceRepository;
+import com.p3.batchframework.persistence.repository.SequenceRepository;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.batch.core.JobParameter;
 import org.springframework.batch.core.JobParameters;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -10,19 +14,12 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
 
-
+@Slf4j
+@RequiredArgsConstructor
 public abstract class AbstractDao {
-    static final String DOT_ESCAPE_STRING = "\\{dot}";
-    static final String DOT_STRING = "\\.";
-    static final String JOB_NAME_KEY = "jobName";
-    static final String TYPE_SUFFIX = "_TYPE";
-
-    @Autowired
-    private SequencesRepository sequencesRepository;
-    @Autowired
-    private JobInstanceRepository jobInstanceRepository;
-    @Autowired
-    private CommonUtility commonUtility;
+    private final SequenceRepository sequencesRepository;
+    private final JobInstanceRepository jobInstanceRepository;
+    private final CommonUtility commonUtility;
 
     Long getNextId(String name) {
 

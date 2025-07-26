@@ -1,4 +1,4 @@
-package com.p3.batchframework.custom_models;
+package com.p3.batchframework.persistence.models;
 
 import jakarta.persistence.*;
 import lombok.AccessLevel;

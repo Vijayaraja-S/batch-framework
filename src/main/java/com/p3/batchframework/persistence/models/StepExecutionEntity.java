@@ -1,4 +1,4 @@
-package com.p3.batchframework.custom_models;
+package com.p3.batchframework.persistence.models;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -14,26 +14,34 @@ import lombok.experimental.FieldNameConstants;
 @Data
 @AllArgsConstructor(access = AccessLevel.PUBLIC)
 @Builder
+@Table(name = "step_execution")
 @Entity
 @FieldNameConstants
-@Table(name = "job_execution")
-public class JobExecutionEntity {
-
+public class StepExecutionEntity {
   @Id private String id;
-  private Long jobInstanceId;
+
+  private String stepName;
+  private Long jobExecutionId;
   private Date startTime;
   private Date endTime;
   private String status;
+  private int commitCount;
+  private int readCount;
+  private int filterCount;
+  private int writeCount;
   private String exitCode;
 
   @Column(columnDefinition = "TEXT")
   private String exitMessage;
 
-  private Date createTime;
+  private int readSkipCount;
+  private int writeSkipCount;
+  private int processSkipCount;
+  private int rollbackCount;
   private Date lastUpdated;
   private int version;
 
-  public JobExecutionEntity() {
+  public StepExecutionEntity() {
     super();
   }
 }

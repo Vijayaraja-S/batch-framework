@@ -1,8 +1,8 @@
 package com.p3.batchframework.daos;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.p3.batchframework.custom_models.StepExecutionContextEntity;
-import com.p3.batchframework.custom_models.StepExecutionEntity;
+import com.p3.batchframework.persistence.models.StepExecutionContextEntity;
+import com.p3.batchframework.persistence.models.StepExecutionEntity;
 import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.util.*;
