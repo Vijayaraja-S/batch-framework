@@ -1,29 +1,15 @@
 package com.p3.batchframework.operations;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.p3solutions.common_beans_dto.job.enums.JobPriority;
-import com.p3solutions.taskhandler.TaskConstants;
-import com.p3solutions.taskhandler.beans.AdditionalInfo;
-import com.p3solutions.taskhandler.beans.TaskObject;
-import com.p3solutions.taskhandler.configuration.ArchonCustomThrottleSupport;
-import com.p3solutions.taskhandler.daos.models.PostgresStepExecutionModel;
-import com.p3solutions.taskhandler.daos.repositories.StepExecutionRepository;
-import com.p3solutions.taskhandler.job.JobExecutorRegistry;
-import com.p3solutions.taskhandler.models.Task;
-import com.p3solutions.taskhandler.repositories.TaskRepository;
-import com.p3solutions.taskhandler.services.PreAnalysisReportSummary;
-import com.p3solutions.taskhandler.services.ReportSummary;
-import com.p3solutions.taskhandler.task.TaskMapperBean;
-import com.p3solutions.taskhandler.utility.CommonUtility;
-import com.p3solutions.taskhandler.utility.MapperUtilsClusterTask;
+import com.p3.batchframework.persistence.models.StepExecutionEntity;
+import com.p3.batchframework.persistence.repository.StepExecutionRepository;
+import com.p3.batchframework.utils.CommonUtility;
+import com.p3.batchframework.utils.MapperUtilsClusterTask;
+import java.time.LocalDateTime;
 import java.util.*;
-import java.util.stream.Collectors;
+import lombok.NonNull;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
-import org.json.JSONObject;
 import org.springframework.batch.core.*;
-import org.springframework.batch.core.configuration.JobRegistry;
 import org.springframework.batch.core.converter.JobParametersConverter;
 import org.springframework.batch.core.explore.JobExplorer;
 import org.springframework.batch.core.launch.*;
@@ -39,10 +25,8 @@ import org.springframework.batch.core.step.tasklet.Tasklet;
 import org.springframework.batch.core.step.tasklet.TaskletStep;
 import org.springframework.batch.support.PropertiesConverter;
 import org.springframework.beans.factory.InitializingBean;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.util.Assert;
-
 
 @Slf4j
 public class CustomJobOperator implements JobOperator, InitializingBean {
@@ -50,24 +34,14 @@ public class CustomJobOperator implements JobOperator, InitializingBean {
   private static final String ILLEGAL_STATE_MSG =
       "Illegal state (only happens on a race condition): " + "%s with name=%s and parameters=%s";
 
-  private JobLauncher jobLauncher;
-  private JobExplorer jobExplorer;
-  private JobRepository jobRepository;
-  private JobParametersConverter jobParametersConverter;
-  private Job job;
-
-  private TaskRepository taskRepository;
-
-  @Autowired(required = false)
-  private PreAnalysisReportSummary preAnalysisReportSummary;
-
-  @Autowired(required = false)
-  private ReportSummary reportSummary;
-
-  @Autowired private MapperUtilsClusterTask mapperUtils;
-  @Autowired private CommonUtility commonUtility;
-  @Autowired private StepExecutionRepository stepExecutionRepository;
-  @Autowired private JobExecutorRegistry registry;
+  private final JobLauncher jobLauncher;
+  private final JobExplorer jobExplorer;
+  private final JobRepository jobRepository;
+  private final JobParametersConverter jobParametersConverter;
+  private final Job job;
+  private final MapperUtilsClusterTask mapperUtils;
+  private final CommonUtility commonUtility;
+  private final StepExecutionRepository stepExecutionRepository;
 
   @Value(value = "${maxCoreSize:2}")
   private String maxCoreSize;
@@ -77,16 +51,22 @@ public class CustomJobOperator implements JobOperator, InitializingBean {
       JobExplorer jobExplorer,
       JobRepository jobRepository,
       JobParametersConverter jobParametersConverter,
-      Job job) {
+      Job job,
+      MapperUtilsClusterTask mapperUtils,
+      CommonUtility commonUtility,
+      StepExecutionRepository stepExecutionRepository) {
     this.jobLauncher = jobLauncher;
     this.jobExplorer = jobExplorer;
     this.jobRepository = jobRepository;
     this.jobParametersConverter = jobParametersConverter;
     this.job = job;
+    this.mapperUtils = mapperUtils;
+    this.commonUtility = commonUtility;
+    this.stepExecutionRepository = stepExecutionRepository;
   }
 
   @Override
-  public List<Long> getExecutions(long instanceId) throws NoSuchJobInstanceException {
+  public @NonNull List<Long> getExecutions(long instanceId) throws NoSuchJobInstanceException {
     JobInstance jobInstance = jobExplorer.getJobInstance(instanceId);
     if (jobInstance == null) {
       throw new NoSuchJobInstanceException(String.format("No job instance with id=%d", instanceId));
@@ -99,7 +79,7 @@ public class CustomJobOperator implements JobOperator, InitializingBean {
   }
 
   @Override
-  public List<Long> getJobInstances(String jobName, int start, int count)
+  public @NonNull List<Long> getJobInstances(@NonNull String jobName, int start, int count)
       throws NoSuchJobException {
     List<Long> list = new ArrayList<>();
     List<JobInstance> jobInstances = jobExplorer.getJobInstances(jobName, start, count);
@@ -112,7 +92,8 @@ public class CustomJobOperator implements JobOperator, InitializingBean {
   }
 
   @Override
-  public Set<Long> getRunningExecutions(String jobName) throws NoSuchJobException {
+  public @NonNull Set<Long> getRunningExecutions(@NonNull String jobName)
+      throws NoSuchJobException {
     Set<Long> set = new LinkedHashSet<>();
     jobExplorer
         .findRunningJobExecutions(jobName)
@@ -125,7 +106,7 @@ public class CustomJobOperator implements JobOperator, InitializingBean {
   }
 
   @Override
-  public String getParameters(long executionId) throws NoSuchJobExecutionException {
+  public @NonNull String getParameters(long executionId) throws NoSuchJobExecutionException {
     JobExecution jobExecution = findExecutionById(executionId);
     return PropertiesConverter.propertiesToString(
         jobParametersConverter.getProperties(jobExecution.getJobParameters()));
@@ -133,7 +114,7 @@ public class CustomJobOperator implements JobOperator, InitializingBean {
 
   public JobParameters getJobParameters(String parameters) {
     List<String> params = Arrays.asList(parameters.split("\\|\\|~#-\\$Archon-ETL#-\\$~\\|\\|"));
-    Map<String, JobParameter> map = new HashMap<>();
+    Map<String, JobParameter<?>> map = new HashMap<>();
     params.forEach(
         i ->
             map.put(
@@ -141,11 +122,10 @@ public class CustomJobOperator implements JobOperator, InitializingBean {
     return new JobParameters(map);
   }
 
-  @SneakyThrows
   @Override
-  public Long start(String jobName, String parameters)
+  public Long start(String jobName, Properties parameters)
       throws JobInstanceAlreadyExistsException, JobParametersInvalidException {
-    log.info("Checking status of job with name=" + jobName);
+    log.info("Checking status of job with name={}", jobName);
     JobParameters jobParameters = getJobParameters(parameters);
     if (jobRepository.isJobInstanceExists(jobName, jobParameters)) {
       throw new JobInstanceAlreadyExistsException(
@@ -153,11 +133,9 @@ public class CustomJobOperator implements JobOperator, InitializingBean {
               "Cannot start a job instance that already exists with name=%s and parameters=%s",
               jobName, parameters));
     }
-    JobPriority jobPriority = getJobPriority(jobParameters);
     try {
-      ArchonCustomThrottleSupport executor = createExecutor(2, jobPriority);
       JobExecution execution = jobLauncher.run(job, jobParameters);
-      registry.register(execution.getId(), executor, jobPriority);
+
       return execution.getId();
     } catch (JobExecutionAlreadyRunningException e) {
       throw new UnexpectedJobExecutionException(
@@ -172,37 +150,6 @@ public class CustomJobOperator implements JobOperator, InitializingBean {
     }
   }
 
-  private JobPriority getJobPriority(JobParameters jobParameters) {
-    try {
-      JSONObject obj = new JSONObject(jobParameters.getParameters().get("TASK").toString());
-      String priority = obj.getString("jobPriority");
-      return JobPriority.valueOf(priority);
-    } catch (Exception e) {
-      return JobPriority.LOW;
-    }
-  }
-
-  public ArchonCustomThrottleSupport createExecutor(int threads, JobPriority jobPriority) {
-    if (JobPriority.HIGH.equals(jobPriority)) {
-      ArchonCustomThrottleSupport executor = new ArchonCustomThrottleSupport();
-      Integer lowPriorityJobsConcurrencyCount = registry.getLowPriorityJobsConcurrencyCount();
-      if (lowPriorityJobsConcurrencyCount != null && lowPriorityJobsConcurrencyCount != 0) {
-        int concurrencyLimit = Integer.parseInt(maxCoreSize) - lowPriorityJobsConcurrencyCount;
-        if (concurrencyLimit <= 0) {
-          executor.setConcurrencyLimit(1);
-        } else {
-          executor.setConcurrencyLimit(concurrencyLimit);
-        }
-      } else {
-        executor.setConcurrencyLimit(Integer.parseInt(maxCoreSize));
-      }
-      return executor;
-    } else {
-      ArchonCustomThrottleSupport executor = new ArchonCustomThrottleSupport();
-      executor.setConcurrencyLimit(threads);
-      return executor;
-    }
-  }
 
   @Override
   public Long restart(long executionId)
@@ -215,23 +162,22 @@ public class CustomJobOperator implements JobOperator, InitializingBean {
     JobExecution jobExecution = findExecutionById(executionId);
     String jobName = jobExecution.getJobInstance().getJobName();
     JobParameters parameters = jobExecution.getJobParameters();
-    JobPriority jobPriority = getJobPriority(parameters);
-    ArchonCustomThrottleSupport executor = createExecutor(2, jobPriority);
-    registry.register(executionId + 1, executor, jobPriority);
+
     log.info(
         String.format(
             "Attempting to resume job with name=%s and parameters=%s", jobName, parameters));
     try {
       String task = parameters.getString("TASK");
       if (task != null) {
-        Task taskObj =
-            new ObjectMapper().readerFor(Task.class).readValue(parameters.getString("TASK"));
-        if (taskObj.getTaskDestination().equals("MOBIUS")) {
-          JobParametersBuilder builder = new JobParametersBuilder();
-          builder.addJobParameters(parameters);
-          builder.addDate("date", new Date());
-          return jobLauncher.run(job, builder.toJobParameters()).getId();
-        }
+        //        Task taskObj =
+        //            new
+        // ObjectMapper().readerFor(Task.class).readValue(parameters.getString("TASK"));
+        //        if (taskObj.getTaskDestination().equals("MOBIUS")) {
+        //          JobParametersBuilder builder = new JobParametersBuilder();
+        //          builder.addJobParameters(parameters);
+        //          builder.addDate("date", new Date());
+        //          return jobLauncher.run(job, builder.toJobParameters()).getId();
+        //        }
       }
       if (jobExecution.getStatus() == BatchStatus.STARTED
           || jobExecution.getStatus() == BatchStatus.STARTING) {
@@ -243,9 +189,10 @@ public class CustomJobOperator implements JobOperator, InitializingBean {
       throw new UnexpectedJobExecutionException(
           String.format(ILLEGAL_STATE_MSG, "job execution already running", jobName, parameters),
           e);
-    } catch (JsonProcessingException e) {
-      throw new RuntimeException(e);
     }
+    //    catch (JsonProcessingException e) {
+    //      throw new RuntimeException(e);
+    //    }
   }
 
   private void stopJobExecution(JobExecution jobExecution, JobParameters parameters) {
@@ -254,14 +201,14 @@ public class CustomJobOperator implements JobOperator, InitializingBean {
       BatchStatus status = lastExecution.getStatus();
       if (lastExecution.getStatus() == BatchStatus.STOPPING || status.isRunning()) {
         lastExecution.setStatus(BatchStatus.STOPPED);
-        lastExecution.setEndTime(new Date());
+        lastExecution.setEndTime(LocalDateTime.now());
         jobRepository.update(lastExecution);
       }
     }
-    List<PostgresStepExecutionModel> jobExecutionId =
+    List<StepExecutionEntity> jobExecutionId =
         stepExecutionRepository.findAllJobExecutionId(jobExecution.getId());
     if (jobExecutionId != null) {
-      for (PostgresStepExecutionModel postgresStepExecutionModel : jobExecutionId) {
+      for (StepExecutionEntity postgresStepExecutionModel : jobExecutionId) {
         if (postgresStepExecutionModel.getStatus().equals(BatchStatus.STARTED.name())
             || postgresStepExecutionModel.getStatus().equals(BatchStatus.STARTING.name())) {
           postgresStepExecutionModel.setStatus(BatchStatus.STOPPED.name());
@@ -400,8 +347,7 @@ public class CustomJobOperator implements JobOperator, InitializingBean {
 
   @Override
   public Set<String> getJobNames() {
-    return new TreeSet<>( // jobRegistry.getJobNames()
-        getTaskIds());
+    return Set.of();
   }
 
   @Override
@@ -416,7 +362,7 @@ public class CustomJobOperator implements JobOperator, InitializingBean {
 
     log.info("Aborting job execution: " + jobExecution);
     jobExecution.upgradeStatus(BatchStatus.ABANDONED);
-    jobExecution.setEndTime(new Date());
+    jobExecution.setEndTime(LocalDateTime.now());
     jobRepository.update(jobExecution);
 
     return jobExecution;
@@ -431,13 +377,13 @@ public class CustomJobOperator implements JobOperator, InitializingBean {
   }
 
   @Override
-  public void afterPropertiesSet() throws Exception {
+  public void afterPropertiesSet() {
     Assert.notNull(jobLauncher, "JobLauncher must be provided");
     Assert.notNull(jobExplorer, "JobExplorer must be provided");
     Assert.notNull(jobRepository, "JobRepository must be provided");
   }
 
   public List<String> getTaskIds() {
-    return taskRepository.findAll().stream().map(Task::getId).collect(Collectors.toList());
+    return null;
   }
 }

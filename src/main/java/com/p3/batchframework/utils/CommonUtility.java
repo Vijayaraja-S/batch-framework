@@ -8,7 +8,7 @@ import java.util.*;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.lang.StringUtils;
+import org.apache.commons.lang3.StringUtils;
 import org.springframework.stereotype.Component;
 
 @Component
@@ -17,7 +17,7 @@ public class CommonUtility {
 
   public String convertObjectToJSON(Object obj) {
     ObjectWriter ow = new ObjectMapper().writer().withDefaultPrettyPrinter();
-      String json = StringUtils.EMPTY;
+    String json = StringUtils.EMPTY;
     try {
       json = ow.writeValueAsString(obj);
     } catch (Exception e) {
@@ -207,10 +207,11 @@ public class CommonUtility {
     return oMapper.convertValue(obj, obj.getClass());
   }
 
+  @SuppressWarnings("unchecked")
   public Map<String, ?> convertByteArrayToMap(byte[] bytes) {
     ByteArrayInputStream byteIn = new ByteArrayInputStream(bytes);
     ObjectInputStream in = null;
-    Map<String, ?> map = null;
+    Map<String, ?> map;
     try {
       in = new ObjectInputStream(byteIn);
       map = (Map<String, ?>) in.readObject();

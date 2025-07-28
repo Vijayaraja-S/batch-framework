@@ -2,13 +2,16 @@ package com.p3.batchframework.persistence.models;
 
 import jakarta.persistence.*;
 import java.io.Serializable;
-import lombok.Data;
+import lombok.*;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
 
-@Data
+@Getter
+@Setter
 @Entity
+@Builder
 @Table(name = "job_execution_context")
+@AllArgsConstructor
 public class JobExecutionContextEntity implements Serializable {
 
   @Id private String id;

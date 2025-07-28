@@ -4,7 +4,8 @@ import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
-import java.util.Date;
+
+import java.time.LocalDateTime;
 import lombok.AccessLevel;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -22,24 +23,24 @@ public class StepExecutionEntity {
 
   private String stepName;
   private Long jobExecutionId;
-  private Date startTime;
-  private Date endTime;
+  private LocalDateTime startTime;
+  private LocalDateTime endTime;
   private String status;
-  private int commitCount;
-  private int readCount;
-  private int filterCount;
-  private int writeCount;
+  private long commitCount;
+  private long readCount;
+  private long filterCount;
+  private long writeCount;
   private String exitCode;
 
   @Column(columnDefinition = "TEXT")
   private String exitMessage;
 
-  private int readSkipCount;
-  private int writeSkipCount;
-  private int processSkipCount;
-  private int rollbackCount;
-  private Date lastUpdated;
-  private int version;
+  private long readSkipCount;
+  private long writeSkipCount;
+  private long processSkipCount;
+  private long rollbackCount;
+  private LocalDateTime lastUpdated;
+  private long version;
 
   public StepExecutionEntity() {
     super();

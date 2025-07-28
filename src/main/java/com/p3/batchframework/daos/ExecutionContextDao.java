@@ -1,8 +1,15 @@
 package com.p3.batchframework.daos;
 
+import static com.p3.batchframework.daos.Constants.*;
+
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.p3.batchframework.persistence.models.JobExecutionContextEntity;
 import com.p3.batchframework.persistence.models.StepExecutionContextEntity;
-import com.p3.batchframework.persistence.models.StepExecutionEntity;
+import com.p3.batchframework.persistence.repository.JobExecutionContextRepository;
+import com.p3.batchframework.persistence.repository.JobInstanceRepository;
+import com.p3.batchframework.persistence.repository.SequenceRepository;
+import com.p3.batchframework.persistence.repository.StepExecutionContextRepository;
+import com.p3.batchframework.utils.CommonUtility;
 import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.util.*;
@@ -17,7 +24,6 @@ import org.springframework.stereotype.Component;
 import org.springframework.util.Assert;
 import org.springframework.util.NumberUtils;
 
-/** MongoExecutionContextDao */
 @Slf4j
 @Component
 public class ExecutionContextDao extends AbstractDao
@@ -27,6 +33,18 @@ public class ExecutionContextDao extends AbstractDao
   private final CommonUtility commonUtility;
 
   private final ReentrantLock stepExecutionLock = new ReentrantLock();
+
+  protected ExecutionContextDao(
+      SequenceRepository sequencesRepository,
+      JobInstanceRepository jobInstanceRepository,
+      CommonUtility commonUtility,
+      StepExecutionContextRepository stepExecutionContextRepository,
+      JobExecutionContextRepository jobExecutionContextRepository) {
+    super(sequencesRepository, jobInstanceRepository, commonUtility);
+    this.stepExecutionContextRepository = stepExecutionContextRepository;
+    this.jobExecutionContextRepository = jobExecutionContextRepository;
+    this.commonUtility = commonUtility;
+  }
 
   @Override
   public @NonNull ExecutionContext getExecutionContext(JobExecution jobExecution) {
@@ -52,7 +70,7 @@ public class ExecutionContextDao extends AbstractDao
   }
 
   @Override
-  public void saveExecutionContexts(Collection<StepExecution> stepExecutions) {
+  public void saveExecutionContexts(@NonNull Collection<StepExecution> stepExecutions) {
     Assert.notNull(stepExecutions, "Attempt to save a null collection of step executions");
     for (StepExecution stepExecution : stepExecutions) {
       saveExecutionContext(stepExecution);
@@ -102,15 +120,15 @@ public class ExecutionContextDao extends AbstractDao
           }
         }
       }
-       contextMap.put("jobExecutionId", jobExecutionId);
+      contextMap.put("jobExecutionId", jobExecutionId);
       if (value instanceof BigDecimal || value instanceof BigInteger) {
         contextMap.put(key + TYPE_SUFFIX, value.getClass().getName());
       }
     }
 
-    Optional<StepExecutionEntity> mongoStepExecutionContextOptional =
+    Optional<StepExecutionContextEntity> mongoStepExecutionContextOptional =
         stepExecutionContextRepository.findById(String.valueOf(executionId));
-    StepExecutionEntity mongoStepExecutionContext;
+    StepExecutionContextEntity mongoStepExecutionContext;
     if (mongoStepExecutionContextOptional.isPresent()) {
       mongoStepExecutionContext = mongoStepExecutionContextOptional.orElse(null);
       mongoStepExecutionContext.setContextMap(
@@ -127,9 +145,13 @@ public class ExecutionContextDao extends AbstractDao
                 .build();
         stepExecutionContextRepository.save(mongoStepExecutionContext);
       } catch (Exception e) {
-        log.error("Exception while mongo step save ***** " + e.getMessage());
+        error(e);
       }
     }
+  }
+
+  private static void error(Exception e) {
+    log.error("Exception while mongo step save ***** {}", e.getMessage());
   }
 
   private void saveOrUpdateJobExecutionContext(
@@ -147,9 +169,9 @@ public class ExecutionContextDao extends AbstractDao
       }
     }
 
-    Optional<StepExecutionContextEntity> mongoJobExecutionContextOptional =
+    Optional<JobExecutionContextEntity> mongoJobExecutionContextOptional =
         jobExecutionContextRepository.findById(String.valueOf(executionId));
-    StepExecutionContextEntity mongoJobExecutionContext;
+    JobExecutionContextEntity mongoJobExecutionContext;
     if (mongoJobExecutionContextOptional.isPresent()) {
       mongoJobExecutionContext = mongoJobExecutionContextOptional.get();
       mongoJobExecutionContext.setContextMap(
@@ -157,21 +179,18 @@ public class ExecutionContextDao extends AbstractDao
       jobExecutionContextRepository.save(mongoJobExecutionContext);
     } else {
       mongoJobExecutionContext =
-              StepExecutionContextEntity.builder()
+          JobExecutionContextEntity.builder()
               .id(String.valueOf(executionId))
               .contextMap(commonUtility.convertMapToByteArray(contextMap, false))
               .build();
       try {
         jobExecutionContextRepository.save(mongoJobExecutionContext);
       } catch (Exception e) {
-        log.error("Exception while mongo step save ***** " + e.getMessage());
+        error(e);
       }
     }
   }
 
-  // observation: after step execution method being called based on partition we get this called
-  // only once for step
-  // execution method(only once)
   private ExecutionContext getExecutionContextFromStepExecution(Long stepExecutionId) {
     Assert.notNull(stepExecutionId, "ExecutionId must not be null.");
     Optional<StepExecutionContextEntity> postgresStepExecutionContextOptional =
@@ -198,7 +217,6 @@ public class ExecutionContextDao extends AbstractDao
             log.warn("Failed to convert {} to {}", key, type);
           }
         }
-        // Mongo db does not allow key name with "." character.
         executionContext.put(key.replaceAll(DOT_ESCAPE_STRING, DOT_STRING), value);
       }
     }
@@ -207,11 +225,11 @@ public class ExecutionContextDao extends AbstractDao
 
   private ExecutionContext getExecutionContextFromJobExecution(Long jobExecutionId) {
     Assert.notNull(jobExecutionId, "ExecutionId must not be null.");
-    Optional<StepExecutionContextEntity> postgresJobExecutionContextOptional =
+    Optional<JobExecutionContextEntity> postgresJobExecutionContextOptional =
         jobExecutionContextRepository.findById(commonUtility.convertLongToString(jobExecutionId));
     ExecutionContext executionContext = new ExecutionContext();
     if (postgresJobExecutionContextOptional.isPresent()) {
-      StepExecutionContextEntity postgresJobExecutionContext =
+      JobExecutionContextEntity postgresJobExecutionContext =
           postgresJobExecutionContextOptional.get();
 
       Map<String, ?> contextMap =

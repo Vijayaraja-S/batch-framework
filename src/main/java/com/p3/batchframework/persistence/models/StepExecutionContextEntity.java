@@ -2,16 +2,14 @@ package com.p3.batchframework.persistence.models;
 
 import jakarta.persistence.*;
 import java.io.Serializable;
-import lombok.AccessLevel;
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Data;
+import lombok.*;
 import org.hibernate.annotations.Fetch;
 import org.hibernate.annotations.FetchMode;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
 
-@Data
+@Getter
+@Setter
 @AllArgsConstructor(access = AccessLevel.PUBLIC)
 @Builder
 @Table(name = "step_execution_context")

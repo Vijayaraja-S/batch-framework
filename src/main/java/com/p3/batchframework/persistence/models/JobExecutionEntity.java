@@ -4,14 +4,12 @@ import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
-import java.util.Date;
-import lombok.AccessLevel;
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Data;
+import java.time.LocalDateTime;
+import lombok.*;
 import lombok.experimental.FieldNameConstants;
 
-@Data
+@Getter
+@Setter
 @AllArgsConstructor(access = AccessLevel.PUBLIC)
 @Builder
 @Entity
@@ -21,16 +19,16 @@ public class JobExecutionEntity {
 
   @Id private String id;
   private Long jobInstanceId;
-  private Date startTime;
-  private Date endTime;
+  private LocalDateTime startTime;
+  private LocalDateTime endTime;
   private String status;
   private String exitCode;
 
   @Column(columnDefinition = "TEXT")
   private String exitMessage;
 
-  private Date createTime;
-  private Date lastUpdated;
+  private LocalDateTime createTime;
+  private LocalDateTime lastUpdated;
   private int version;
 
   public JobExecutionEntity() {

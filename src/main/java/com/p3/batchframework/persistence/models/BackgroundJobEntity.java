@@ -3,6 +3,7 @@ package com.p3.batchframework.persistence.models;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 import java.io.Serializable;
+import java.time.LocalDateTime;
 import java.util.*;
 import lombok.*;
 import org.hibernate.annotations.JdbcTypeCode;
@@ -24,16 +25,15 @@ public class BackgroundJobEntity extends BaseEntity implements Serializable {
 
   private String type;
 
-  @Column(name = "jobInput")
+  private String downloadStatus;
+
+  @Temporal(TemporalType.TIMESTAMP)
+  private LocalDateTime startTime;
+
   @JdbcTypeCode(SqlTypes.BINARY)
   @Lob
   private byte[] jobInput;
 
-  @Temporal(TemporalType.TIMESTAMP)
-  @Column(name = "startTime")
-  private Date startTime;
-
-  @Column(name = "message")
   @JdbcTypeCode(SqlTypes.BINARY)
   @Lob
   private byte[] message;
@@ -43,10 +43,7 @@ public class BackgroundJobEntity extends BaseEntity implements Serializable {
   @Lob
   private byte[] downloadMessage;
 
-  private String downloadStatus;
-
   @JsonIgnore
-  @Column(name = "file")
   @JdbcTypeCode(SqlTypes.BINARY)
   @Lob
   private byte[] outputFile;
