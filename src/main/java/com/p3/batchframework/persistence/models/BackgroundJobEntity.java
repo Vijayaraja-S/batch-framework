@@ -6,6 +6,7 @@ import java.io.Serializable;
 import java.time.LocalDateTime;
 import java.util.*;
 import lombok.*;
+import org.assertj.core.util.Lists;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
 
@@ -16,12 +17,12 @@ import org.hibernate.type.SqlTypes;
 @Builder
 @Entity
 @Table(name = "background_job")
-public class BackgroundJobEntity extends BaseEntity implements Serializable {
+public class  BackgroundJobEntity extends BaseEntity implements Serializable {
   private String name;
 
   private String description;
 
-  private String status;
+  private BGStatus status;
 
   private String type;
 
@@ -47,4 +48,12 @@ public class BackgroundJobEntity extends BaseEntity implements Serializable {
   @JdbcTypeCode(SqlTypes.BINARY)
   @Lob
   private byte[] outputFile;
+
+  @ElementCollection
+  @CollectionTable(
+      name = "job_execution_ids",
+      joinColumns = @JoinColumn(name = "background_job_id"))
+  @Column(name = "execution_id")
+  @Builder.Default
+  private List<Long> executionIds = Lists.newArrayList();
 }

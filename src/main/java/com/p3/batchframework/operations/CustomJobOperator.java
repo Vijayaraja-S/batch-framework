@@ -1,8 +1,9 @@
 package com.p3.batchframework.operations;
 
+import static com.p3.batchframework.utils.Constants.*;
+
 import com.p3.batchframework.persistence.models.StepExecutionEntity;
 import com.p3.batchframework.persistence.repository.StepExecutionRepository;
-import com.p3.batchframework.utils.CommonUtility;
 import com.p3.batchframework.utils.MapperUtilsClusterTask;
 import java.time.LocalDateTime;
 import java.util.*;
@@ -10,6 +11,7 @@ import lombok.NonNull;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.batch.core.*;
+import org.springframework.batch.core.converter.DefaultJobParametersConverter;
 import org.springframework.batch.core.converter.JobParametersConverter;
 import org.springframework.batch.core.explore.JobExplorer;
 import org.springframework.batch.core.launch.*;
@@ -25,43 +27,31 @@ import org.springframework.batch.core.step.tasklet.Tasklet;
 import org.springframework.batch.core.step.tasklet.TaskletStep;
 import org.springframework.batch.support.PropertiesConverter;
 import org.springframework.beans.factory.InitializingBean;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.util.Assert;
 
 @Slf4j
 public class CustomJobOperator implements JobOperator, InitializingBean {
 
-  private static final String ILLEGAL_STATE_MSG =
-      "Illegal state (only happens on a race condition): " + "%s with name=%s and parameters=%s";
-
   private final JobLauncher jobLauncher;
   private final JobExplorer jobExplorer;
   private final JobRepository jobRepository;
-  private final JobParametersConverter jobParametersConverter;
+  private final JobParametersConverter jobParametersConverter = new DefaultJobParametersConverter();
   private final Job job;
   private final MapperUtilsClusterTask mapperUtils;
-  private final CommonUtility commonUtility;
   private final StepExecutionRepository stepExecutionRepository;
-
-  @Value(value = "${maxCoreSize:2}")
-  private String maxCoreSize;
 
   public CustomJobOperator(
       JobLauncher jobLauncher,
       JobExplorer jobExplorer,
       JobRepository jobRepository,
-      JobParametersConverter jobParametersConverter,
       Job job,
       MapperUtilsClusterTask mapperUtils,
-      CommonUtility commonUtility,
       StepExecutionRepository stepExecutionRepository) {
     this.jobLauncher = jobLauncher;
     this.jobExplorer = jobExplorer;
     this.jobRepository = jobRepository;
-    this.jobParametersConverter = jobParametersConverter;
     this.job = job;
     this.mapperUtils = mapperUtils;
-    this.commonUtility = commonUtility;
     this.stepExecutionRepository = stepExecutionRepository;
   }
 
@@ -108,64 +98,54 @@ public class CustomJobOperator implements JobOperator, InitializingBean {
   @Override
   public @NonNull String getParameters(long executionId) throws NoSuchJobExecutionException {
     JobExecution jobExecution = findExecutionById(executionId);
-    return PropertiesConverter.propertiesToString(
-        jobParametersConverter.getProperties(jobExecution.getJobParameters()));
-  }
-
-  public JobParameters getJobParameters(String parameters) {
-    List<String> params = Arrays.asList(parameters.split("\\|\\|~#-\\$Archon-ETL#-\\$~\\|\\|"));
-    Map<String, JobParameter<?>> map = new HashMap<>();
-    params.forEach(
-        i ->
-            map.put(
-                i.substring(0, i.indexOf("=")), new JobParameter(i.substring(i.indexOf("=") + 1))));
-    return new JobParameters(map);
+    Properties properties = jobParametersConverter.getProperties(jobExecution.getJobParameters());
+    return PropertiesConverter.propertiesToString(properties);
   }
 
   @Override
-  public Long start(String jobName, Properties parameters)
+  public @NonNull Long start(@NonNull String jobName, @NonNull Properties properties)
       throws JobInstanceAlreadyExistsException, JobParametersInvalidException {
     log.info("Checking status of job with name={}", jobName);
-    JobParameters jobParameters = getJobParameters(parameters);
+
+    JobParameters jobParameters = jobParametersConverter.getJobParameters(properties);
+
     if (jobRepository.isJobInstanceExists(jobName, jobParameters)) {
       throw new JobInstanceAlreadyExistsException(
           String.format(
-              "Cannot start a job instance that already exists with name=%s and parameters=%s",
-              jobName, parameters));
+              "Cannot start a job instance that already exists with name=%s and parameters={%s}",
+              jobName, jobParameters));
     }
-    try {
-      JobExecution execution = jobLauncher.run(job, jobParameters);
 
-      return execution.getId();
+    try {
+      // this job interface directly injected it will work only one job multiple jobs means use job
+      // register
+      return jobLauncher.run(job, jobParameters).getId();
+
     } catch (JobExecutionAlreadyRunningException e) {
       throw new UnexpectedJobExecutionException(
-          String.format(ILLEGAL_STATE_MSG, "job execution already running", jobName, parameters),
+          String.format(ILLEGAL_STATE_MSG, JOB_EXECUTION_ALREADY_RUNNING, jobName, jobParameters),
           e);
     } catch (JobRestartException e) {
       throw new UnexpectedJobExecutionException(
-          String.format(ILLEGAL_STATE_MSG, "job not restartable", jobName, parameters), e);
+          String.format(ILLEGAL_STATE_MSG, JOB_NOT_RESTARTABLE, jobName, jobParameters), e);
     } catch (JobInstanceAlreadyCompleteException e) {
       throw new UnexpectedJobExecutionException(
-          String.format(ILLEGAL_STATE_MSG, "job already complete", jobName, parameters), e);
+          String.format(ILLEGAL_STATE_MSG, JOB_ALREADY_COMPLETE, jobName, jobParameters), e);
     }
   }
 
-
   @Override
-  public Long restart(long executionId)
+  public @NonNull Long restart(long executionId)
       throws JobInstanceAlreadyCompleteException,
           NoSuchJobExecutionException,
-          NoSuchJobException,
           JobRestartException,
           JobParametersInvalidException {
-    log.info("Checking status of job execution with id=" + executionId);
+    log.info("Checking status of job execution with id={}", executionId);
     JobExecution jobExecution = findExecutionById(executionId);
     String jobName = jobExecution.getJobInstance().getJobName();
     JobParameters parameters = jobExecution.getJobParameters();
 
-    log.info(
-        String.format(
-            "Attempting to resume job with name=%s and parameters=%s", jobName, parameters));
+    log.info("Attempting to resume job with name={} and parameters={}", jobName, parameters);
     try {
       String task = parameters.getString("TASK");
       if (task != null) {

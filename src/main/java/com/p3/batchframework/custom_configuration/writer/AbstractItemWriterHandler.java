@@ -5,7 +5,7 @@ import org.springframework.batch.item.Chunk;
 import org.springframework.batch.item.ExecutionContext;
 import org.springframework.batch.item.ItemStreamException;
 
-public class AbstractItemWriterHandler<T> implements CustomItemWriter<T> {
+public abstract class AbstractItemWriterHandler<T> implements CustomItemWriter<T> {
   @Override
   public void write(@NonNull Chunk<? extends T> chunk) {}
 

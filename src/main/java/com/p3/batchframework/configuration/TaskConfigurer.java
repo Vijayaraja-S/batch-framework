@@ -2,6 +2,8 @@ package com.p3.batchframework.configuration;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.batch.core.configuration.JobRegistry;
+import org.springframework.batch.core.configuration.support.MapJobRegistry;
 import org.springframework.batch.core.explore.JobExplorer;
 import org.springframework.batch.core.explore.support.SimpleJobExplorer;
 import org.springframework.batch.core.launch.support.TaskExecutorJobLauncher;
@@ -44,4 +46,9 @@ public class TaskConfigurer {
     return new SimpleJobExplorer(
         jobInstanceDao, jobExecutionDao, stepExecutionDao, executionContextDao);
   }
+  @Bean
+  public JobRegistry jobRegistry() {
+    return new MapJobRegistry();
+  }
+
 }

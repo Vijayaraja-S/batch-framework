@@ -1,7 +1,7 @@
 package com.p3.batchframework.daos;
 
-import static com.p3.batchframework.daos.Constants.DOT_ESCAPE_STRING;
-import static com.p3.batchframework.daos.Constants.DOT_STRING;
+import static com.p3.batchframework.utils.Constants.DOT_ESCAPE_STRING;
+import static com.p3.batchframework.utils.Constants.DOT_STRING;
 
 import com.p3.batchframework.persistence.models.JobInstanceEntity;
 import com.p3.batchframework.persistence.models.SequencesEntity;

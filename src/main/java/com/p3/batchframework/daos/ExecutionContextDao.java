@@ -1,6 +1,6 @@
 package com.p3.batchframework.daos;
 
-import static com.p3.batchframework.daos.Constants.*;
+import static com.p3.batchframework.utils.Constants.*;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.p3.batchframework.persistence.models.JobExecutionContextEntity;

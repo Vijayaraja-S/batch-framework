@@ -6,7 +6,7 @@ import org.springframework.batch.item.ExecutionContext;
 import org.springframework.batch.item.ItemStreamException;
 
 @Slf4j
-public class AbstractItemProcessorHandler<I, O> implements CustomItemProcessor<I, O> {
+public abstract  class AbstractItemProcessorHandler<I, O> implements CustomItemProcessor<I, O> {
 
   @Override
   public O process(@NonNull I item) {
