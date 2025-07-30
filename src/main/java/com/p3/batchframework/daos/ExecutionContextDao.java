@@ -48,25 +48,27 @@ public class ExecutionContextDao extends AbstractDao
 
   @Override
   public @NonNull ExecutionContext getExecutionContext(JobExecution jobExecution) {
-    return getExecutionContextFromJobExecution(jobExecution.getId());
+    return getExecutionContext(jobExecution.getId(), true);
   }
 
   @Override
   public @NonNull ExecutionContext getExecutionContext(StepExecution stepExecution) {
-    return getExecutionContextFromStepExecution(stepExecution.getId());
+    return getExecutionContext(stepExecution.getId(), false);
   }
 
   @Override
   public void saveExecutionContext(JobExecution jobExecution) {
-    saveOrUpdateJobExecutionContext(jobExecution.getId(), jobExecution.getExecutionContext());
+    saveOrUpdateExecutionContext(
+        null, jobExecution.getExecutionContext(), jobExecution.getId(), false);
   }
 
   @Override
   public void saveExecutionContext(StepExecution stepExecution) {
-    saveOrUpdateStepExecutionContext(
+    saveOrUpdateExecutionContext(
         stepExecution.getId(),
         stepExecution.getExecutionContext(),
-        stepExecution.getJobExecutionId());
+        stepExecution.getJobExecutionId(),
+        true);
   }
 
   @Override
@@ -80,177 +82,220 @@ public class ExecutionContextDao extends AbstractDao
 
   @Override
   public void updateExecutionContext(JobExecution jobExecution) {
-    saveOrUpdateJobExecutionContext(jobExecution.getId(), jobExecution.getExecutionContext());
+    saveOrUpdateExecutionContext(
+        null, jobExecution.getExecutionContext(), jobExecution.getId(), false);
   }
 
   @Override
   public void updateExecutionContext(StepExecution stepExecution) {
     stepExecutionLock.lock();
     try {
-      saveOrUpdateStepExecutionContext(
+      saveOrUpdateExecutionContext(
           stepExecution.getId(),
           stepExecution.getExecutionContext(),
-          stepExecution.getJobExecutionId());
+          stepExecution.getJobExecutionId(),
+          true);
     } finally {
       stepExecutionLock.unlock();
     }
   }
 
-  private void saveOrUpdateStepExecutionContext(
-      Long executionId, ExecutionContext executionContext, Long jobExecutionId) {
-    Assert.notNull(executionId, "ExecutionId must not be null.");
+  private void saveOrUpdateExecutionContext(
+      Long stepExecutionId,
+      ExecutionContext executionContext,
+      Long jobExecutionId,
+      boolean isStepContext) {
+
+    if (isStepContext) {
+      Assert.notNull(stepExecutionId, "ExecutionId must not be null.");
+    }
+
     Assert.notNull(executionContext, "The ExecutionContext must not be null.");
+
+    Map<String, Object> contextMap = buildContextMap(executionContext, jobExecutionId);
+
+    byte[] contextBytes = commonUtility.convertMapToByteArray(contextMap, false);
+    String stringId = String.valueOf(stepExecutionId);
+
+    if (isStepContext) {
+      saveOrUpdateStepContextEntity(stringId, contextBytes, jobExecutionId);
+    } else {
+      saveOrUpdateJobContextEntity(stringId, contextBytes);
+    }
+  }
+
+  @SuppressWarnings("unchecked")
+  private Map<String, Object> buildContextMap(
+      ExecutionContext executionContext, Long jobExecutionId) {
     Map<String, Object> contextMap = new HashMap<>();
-    ObjectMapper oMapper = new ObjectMapper();
+    ObjectMapper objectMapper = new ObjectMapper();
 
     for (Map.Entry<String, Object> entry : executionContext.entrySet()) {
-      Object value = entry.getValue();
       String key = entry.getKey();
-      contextMap.put(key.replaceAll(DOT_STRING, DOT_ESCAPE_STRING), value);
+      Object value = entry.getValue();
 
+      String escapedKey = key.replaceAll(DOT_STRING, DOT_ESCAPE_STRING);
+      contextMap.put(escapedKey, value);
+
+      // Handle nested ReportData keys (only applies to step context)
       if (key.contains("ReportData") || key.contains("TableExtractionPerformanceReport")) {
         ConcurrentHashMap<String, Object> subMap =
-            oMapper.convertValue(value, ConcurrentHashMap.class);
-        for (Map.Entry<String, Object> mapEntity : subMap.entrySet()) {
-          if (mapEntity.getKey().contains(".")) {
-            subMap.put(
-                mapEntity.getKey().replaceAll(DOT_STRING, DOT_ESCAPE_STRING), mapEntity.getValue());
-            subMap.remove(mapEntity.getKey());
-            contextMap.put(entry.getKey(), subMap);
-          }
-        }
+            objectMapper.convertValue(value, ConcurrentHashMap.class);
+        escapeNestedKeys(subMap);
+        contextMap.put(key, subMap); // Re-add after escaping inner keys
       }
-      contextMap.put("jobExecutionId", jobExecutionId);
+
       if (value instanceof BigDecimal || value instanceof BigInteger) {
-        contextMap.put(key + TYPE_SUFFIX, value.getClass().getName());
+        contextMap.put(escapedKey + TYPE_SUFFIX, value.getClass().getName());
       }
     }
 
-    Optional<StepExecutionContextEntity> mongoStepExecutionContextOptional =
-        stepExecutionContextRepository.findById(String.valueOf(executionId));
-    StepExecutionContextEntity mongoStepExecutionContext;
-    if (mongoStepExecutionContextOptional.isPresent()) {
-      mongoStepExecutionContext = mongoStepExecutionContextOptional.orElse(null);
-      mongoStepExecutionContext.setContextMap(
-          commonUtility.convertMapToByteArray(contextMap, false));
-      mongoStepExecutionContext.setJobExecutionId(jobExecutionId);
-      stepExecutionContextRepository.save(mongoStepExecutionContext);
-    } else {
-      try {
-        mongoStepExecutionContext =
-            StepExecutionContextEntity.builder()
-                .id(String.valueOf(executionId))
-                .contextMap(commonUtility.convertMapToByteArray(contextMap, false))
-                .jobExecutionId(jobExecutionId)
-                .build();
-        stepExecutionContextRepository.save(mongoStepExecutionContext);
-      } catch (Exception e) {
-        error(e);
+    // Only step context needs jobExecutionId stored
+    if (jobExecutionId != null) {
+      contextMap.put("jobExecutionId", jobExecutionId);
+    }
+
+    return contextMap;
+  }
+
+  private void escapeNestedKeys(ConcurrentHashMap<String, Object> subMap) {
+    List<String> keysToReplace = new ArrayList<>();
+    for (String key : subMap.keySet()) {
+      if (key.contains(".")) {
+        keysToReplace.add(key);
       }
+    }
+
+    for (String oldKey : keysToReplace) {
+      Object value = subMap.remove(oldKey);
+      String newKey = oldKey.replaceAll(DOT_STRING, DOT_ESCAPE_STRING);
+      subMap.put(newKey, value);
+    }
+  }
+
+  private void saveOrUpdateStepContextEntity(String id, byte[] contextBytes, Long jobExecutionId) {
+    Optional<StepExecutionContextEntity> existing = stepExecutionContextRepository.findById(id);
+    StepExecutionContextEntity entity;
+
+    if (existing.isPresent()) {
+      entity = existing.get();
+      entity.setContextMap(contextBytes);
+      entity.setJobExecutionId(jobExecutionId);
+    } else {
+      entity =
+          StepExecutionContextEntity.builder()
+              .id(id)
+              .contextMap(contextBytes)
+              .jobExecutionId(jobExecutionId)
+              .build();
+    }
+
+    try {
+      stepExecutionContextRepository.save(entity);
+    } catch (Exception e) {
+      error(e);
+    }
+  }
+
+  private void saveOrUpdateJobContextEntity(String id, byte[] contextBytes) {
+    Optional<JobExecutionContextEntity> existing = jobExecutionContextRepository.findById(id);
+    JobExecutionContextEntity entity;
+
+    if (existing.isPresent()) {
+      entity = existing.get();
+      entity.setContextMap(contextBytes);
+    } else {
+      entity = JobExecutionContextEntity.builder().id(id).contextMap(contextBytes).build();
+    }
+
+    try {
+      jobExecutionContextRepository.save(entity);
+    } catch (Exception e) {
+      error(e);
+    }
+  }
+
+  private ExecutionContext getExecutionContext(Long id, boolean isJobExecutionId) {
+    validateJobExecutionId(id);
+    if (isJobExecutionId) {
+      return getExecutionContextFromJobExecution(id);
+    } else {
+      return getExecutionContextFromStepExecution(id);
+    }
+  }
+
+  private ExecutionContext getExecutionContextFromStepExecution(Long id) {
+    Optional<StepExecutionContextEntity> stepExecutionContextEntity =
+        stepExecutionContextRepository.findById(commonUtility.convertLongToString(id));
+    if (stepExecutionContextEntity.isEmpty()) {
+      return new ExecutionContext();
+    }
+    StepExecutionContextEntity contextEntity = stepExecutionContextEntity.get();
+    return buildExecutionContext(contextEntity.getId(), contextEntity.getContextMap());
+  }
+
+  private ExecutionContext getExecutionContextFromJobExecution(Long id) {
+    Optional<JobExecutionContextEntity> optionalEntity =
+        jobExecutionContextRepository.findById(commonUtility.convertLongToString(id));
+    if (optionalEntity.isEmpty()) {
+      return new ExecutionContext();
+    }
+    JobExecutionContextEntity contextEntity = optionalEntity.get();
+    return buildExecutionContext(contextEntity.getId(), contextEntity.getContextMap());
+  }
+
+  private ExecutionContext buildExecutionContext(String id, byte[] contextMapByte) {
+    ExecutionContext executionContext = new ExecutionContext();
+
+    executionContext.put("_id", id);
+
+    Map<String, ?> contextMap = commonUtility.convertByteArrayToMap(contextMapByte);
+
+    for (Map.Entry<String, ?> entry : contextMap.entrySet()) {
+      String key = entry.getKey();
+      Object value = entry.getValue();
+
+      if (key.endsWith(TYPE_SUFFIX)) {
+        continue; // Skip metadata keys
+      }
+
+      String typeKey = key + TYPE_SUFFIX;
+      String type = (String) contextMap.get(typeKey);
+
+      // Convert number types back to target class
+      if (type != null && value instanceof Number) {
+        value = convertNumber(value, type, key);
+      }
+
+      // Put cleaned-up key and value into ExecutionContext
+      executionContext.put(cleanKey(key), value);
+    }
+
+    return executionContext;
+  }
+
+  @SuppressWarnings("unchecked")
+  private Object convertNumber(Object value, String type, String key) {
+    try {
+      return NumberUtils.convertNumberToTargetClass(
+          (Number) value, (Class<? extends Number>) Class.forName(type));
+    } catch (Exception e) {
+      log.warn("Failed to convert key '{}' to type '{}': {}", key, type, e.getMessage());
+      return value;
+    }
+  }
+
+  private String cleanKey(String key) {
+    return key.replaceAll(DOT_STRING, DOT_ESCAPE_STRING);
+  }
+
+  private void validateJobExecutionId(Long jobExecutionId) {
+    if (jobExecutionId == null) {
+      throw new IllegalArgumentException("ExecutionId must not be null.");
     }
   }
 
   private static void error(Exception e) {
     log.error("Exception while mongo step save ***** {}", e.getMessage());
-  }
-
-  private void saveOrUpdateJobExecutionContext(
-      Long executionId, ExecutionContext executionContext) {
-    Assert.notNull(executionId, "ExecutionId must not be null.");
-    Assert.notNull(executionContext, "The ExecutionContext must not be null.");
-
-    Map<String, Object> contextMap = new HashMap<>();
-    for (Map.Entry<String, Object> entry : executionContext.entrySet()) {
-      Object value = entry.getValue();
-      String key = entry.getKey();
-      contextMap.put(key.replaceAll(DOT_STRING, DOT_ESCAPE_STRING), value);
-      if (value instanceof BigDecimal || value instanceof BigInteger) {
-        contextMap.put(key + TYPE_SUFFIX, value.getClass().getName());
-      }
-    }
-
-    Optional<JobExecutionContextEntity> mongoJobExecutionContextOptional =
-        jobExecutionContextRepository.findById(String.valueOf(executionId));
-    JobExecutionContextEntity mongoJobExecutionContext;
-    if (mongoJobExecutionContextOptional.isPresent()) {
-      mongoJobExecutionContext = mongoJobExecutionContextOptional.get();
-      mongoJobExecutionContext.setContextMap(
-          commonUtility.convertMapToByteArray(contextMap, false));
-      jobExecutionContextRepository.save(mongoJobExecutionContext);
-    } else {
-      mongoJobExecutionContext =
-          JobExecutionContextEntity.builder()
-              .id(String.valueOf(executionId))
-              .contextMap(commonUtility.convertMapToByteArray(contextMap, false))
-              .build();
-      try {
-        jobExecutionContextRepository.save(mongoJobExecutionContext);
-      } catch (Exception e) {
-        error(e);
-      }
-    }
-  }
-
-  private ExecutionContext getExecutionContextFromStepExecution(Long stepExecutionId) {
-    Assert.notNull(stepExecutionId, "ExecutionId must not be null.");
-    Optional<StepExecutionContextEntity> postgresStepExecutionContextOptional =
-        stepExecutionContextRepository.findById(commonUtility.convertLongToString(stepExecutionId));
-
-    ExecutionContext executionContext = new ExecutionContext();
-    if (postgresStepExecutionContextOptional.isPresent()) {
-      StepExecutionContextEntity postgresStepExecutionContextModel =
-          postgresStepExecutionContextOptional.get();
-
-      Map<String, ?> contextMap =
-          commonUtility.convertByteArrayToMap(postgresStepExecutionContextModel.getContextMap());
-      executionContext.put("_id", postgresStepExecutionContextOptional.get().getId());
-      for (Map.Entry<String, ?> entry : contextMap.entrySet()) {
-        String key = entry.getKey();
-        Object value = entry.getValue();
-        String type = (String) contextMap.get(key + TYPE_SUFFIX);
-        if (type != null && Number.class.isAssignableFrom(value.getClass())) {
-          try {
-            value =
-                NumberUtils.convertNumberToTargetClass(
-                    (Number) value, (Class<? extends Number>) Class.forName(type));
-          } catch (Exception e) {
-            log.warn("Failed to convert {} to {}", key, type);
-          }
-        }
-        executionContext.put(key.replaceAll(DOT_ESCAPE_STRING, DOT_STRING), value);
-      }
-    }
-    return executionContext;
-  }
-
-  private ExecutionContext getExecutionContextFromJobExecution(Long jobExecutionId) {
-    Assert.notNull(jobExecutionId, "ExecutionId must not be null.");
-    Optional<JobExecutionContextEntity> postgresJobExecutionContextOptional =
-        jobExecutionContextRepository.findById(commonUtility.convertLongToString(jobExecutionId));
-    ExecutionContext executionContext = new ExecutionContext();
-    if (postgresJobExecutionContextOptional.isPresent()) {
-      JobExecutionContextEntity postgresJobExecutionContext =
-          postgresJobExecutionContextOptional.get();
-
-      Map<String, ?> contextMap =
-          commonUtility.convertByteArrayToMap(postgresJobExecutionContext.getContextMap());
-      executionContext.put("_id", postgresJobExecutionContextOptional.orElse(null).getId());
-      for (Map.Entry<String, ?> entry : contextMap.entrySet()) {
-        String key = entry.getKey();
-        Object value = entry.getValue();
-        String type = (String) contextMap.get(key + TYPE_SUFFIX);
-        if (type != null && Number.class.isAssignableFrom(value.getClass())) {
-          try {
-            value =
-                NumberUtils.convertNumberToTargetClass(
-                    (Number) value, (Class<? extends Number>) Class.forName(type));
-          } catch (Exception e) {
-            log.warn("Failed to convert {} to {}", key, type);
-          }
-        }
-        executionContext.put(key.replaceAll(DOT_ESCAPE_STRING, DOT_STRING), value);
-      }
-    }
-    return executionContext;
   }
 }

@@ -136,7 +136,6 @@ public class JobExecutionDao extends AbstractDao
 
   @Override
   public @NonNull Set<JobExecution> findRunningJobExecutions(@NonNull String jobName) {
-
     List<JobInstanceEntity> postgresJobInstanceModelList =
         jobInstanceRepository.findByJobName(jobName);
     List<String> ids = new ArrayList<>();
@@ -185,17 +184,14 @@ public class JobExecutionDao extends AbstractDao
     }
   }
 
-  private JobExecutionEntity save(JobExecution jobExecution, Long id) {
+  private void save(JobExecution jobExecution, Long id) {
     jobExecution.setId(id);
-    JobExecutionEntity postgresJobExecutionModel1 = null;
     try {
       JobExecutionEntity postgresJobExecutionModel = getJobExecutionEntity(jobExecution);
-
-      postgresJobExecutionModel1 = jobExecutionRepository.save(postgresJobExecutionModel);
+      jobExecutionRepository.save(postgresJobExecutionModel);
     } catch (Exception e) {
       log.error("Unexpected error Occurred: {}", e.getMessage());
     }
-    return postgresJobExecutionModel1;
   }
 
   private void validateJobExecution(JobExecution jobExecution) {

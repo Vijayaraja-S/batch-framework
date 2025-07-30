@@ -189,11 +189,11 @@ public class StepExecutionDao extends AbstractDao
   }
 
   private JobExecution mapJobExecution(
-      JobInstance jobInstance, StepExecutionEntity postgresStepExecutionMapperBean) {
-    if (postgresStepExecutionMapperBean == null) {
+      JobInstance jobInstance, StepExecutionEntity stepExecutionEntity) {
+    if (stepExecutionEntity == null) {
       return null;
     }
-    Long id = postgresStepExecutionMapperBean.getJobExecutionId();
+    Long id = stepExecutionEntity.getJobExecutionId();
     JobExecution jobExecution;
     if (jobInstance == null) {
       jobExecution = new JobExecution(id);
@@ -201,45 +201,45 @@ public class StepExecutionDao extends AbstractDao
       JobParameters jobParameters = getJobParameters(jobInstance.getId());
       jobExecution = new JobExecution(jobInstance, id, jobParameters);
     }
-    jobExecution.setStartTime(postgresStepExecutionMapperBean.getStartTime());
-    jobExecution.setEndTime(postgresStepExecutionMapperBean.getEndTime());
-    jobExecution.setStatus(BatchStatus.valueOf(postgresStepExecutionMapperBean.getStatus()));
+    jobExecution.setStartTime(stepExecutionEntity.getStartTime());
+    jobExecution.setEndTime(stepExecutionEntity.getEndTime());
+    jobExecution.setStatus(BatchStatus.valueOf(stepExecutionEntity.getStatus()));
     jobExecution.setExitStatus(
         new ExitStatus(
-            (postgresStepExecutionMapperBean.getExitCode()),
-            postgresStepExecutionMapperBean.getExitMessage()));
-    jobExecution.setLastUpdated(postgresStepExecutionMapperBean.getLastUpdated());
-    jobExecution.setVersion((int) postgresStepExecutionMapperBean.getVersion());
+            (stepExecutionEntity.getExitCode()),
+            stepExecutionEntity.getExitMessage()));
+    jobExecution.setLastUpdated(stepExecutionEntity.getLastUpdated());
+    jobExecution.setVersion((int) stepExecutionEntity.getVersion());
     return jobExecution;
   }
 
   private StepExecution mapStepExecution(
-      StepExecutionEntity postgresStepExecutionMapperBean, JobExecution jobExecution) {
-    if (postgresStepExecutionMapperBean == null) {
+      StepExecutionEntity stepExecutionEntity, JobExecution jobExecution) {
+    if (stepExecutionEntity == null) {
       return null;
     }
     StepExecution stepExecution =
         new StepExecution(
-            (postgresStepExecutionMapperBean.getStepName()),
+            (stepExecutionEntity.getStepName()),
             jobExecution,
-            commonUtility.convertStringToLong(postgresStepExecutionMapperBean.getId()));
-    stepExecution.setStartTime(postgresStepExecutionMapperBean.getStartTime());
-    stepExecution.setEndTime(postgresStepExecutionMapperBean.getEndTime());
-    stepExecution.setStatus(BatchStatus.valueOf(postgresStepExecutionMapperBean.getStatus()));
-    stepExecution.setCommitCount(postgresStepExecutionMapperBean.getCommitCount());
-    stepExecution.setReadCount(postgresStepExecutionMapperBean.getReadCount());
-    stepExecution.setFilterCount(postgresStepExecutionMapperBean.getFilterCount());
-    stepExecution.setWriteCount(postgresStepExecutionMapperBean.getWriteCount());
+            commonUtility.convertStringToLong(stepExecutionEntity.getId()));
+    stepExecution.setStartTime(stepExecutionEntity.getStartTime());
+    stepExecution.setEndTime(stepExecutionEntity.getEndTime());
+    stepExecution.setStatus(BatchStatus.valueOf(stepExecutionEntity.getStatus()));
+    stepExecution.setCommitCount(stepExecutionEntity.getCommitCount());
+    stepExecution.setReadCount(stepExecutionEntity.getReadCount());
+    stepExecution.setFilterCount(stepExecutionEntity.getFilterCount());
+    stepExecution.setWriteCount(stepExecutionEntity.getWriteCount());
     stepExecution.setExitStatus(
         new ExitStatus(
-            postgresStepExecutionMapperBean.getExitCode(),
-            postgresStepExecutionMapperBean.getExitMessage()));
-    stepExecution.setReadSkipCount(postgresStepExecutionMapperBean.getReadSkipCount());
-    stepExecution.setWriteSkipCount(postgresStepExecutionMapperBean.getWriteSkipCount());
-    stepExecution.setProcessSkipCount(postgresStepExecutionMapperBean.getProcessSkipCount());
-    stepExecution.setRollbackCount(postgresStepExecutionMapperBean.getRollbackCount());
-    stepExecution.setLastUpdated(postgresStepExecutionMapperBean.getLastUpdated());
-    stepExecution.setVersion((int) postgresStepExecutionMapperBean.getVersion());
+            stepExecutionEntity.getExitCode(),
+            stepExecutionEntity.getExitMessage()));
+    stepExecution.setReadSkipCount(stepExecutionEntity.getReadSkipCount());
+    stepExecution.setWriteSkipCount(stepExecutionEntity.getWriteSkipCount());
+    stepExecution.setProcessSkipCount(stepExecutionEntity.getProcessSkipCount());
+    stepExecution.setRollbackCount(stepExecutionEntity.getRollbackCount());
+    stepExecution.setLastUpdated(stepExecutionEntity.getLastUpdated());
+    stepExecution.setVersion((int) stepExecutionEntity.getVersion());
     return stepExecution;
   }
 

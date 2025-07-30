@@ -1,5 +1,6 @@
-package com.p3.batchframework.service.bean;
+package com.p3.batchframework.job_execution_service.bean;
 
+import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.List;
 import lombok.AllArgsConstructor;
@@ -11,11 +12,12 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 @Data
 @Builder
-public class ConnectionInputBean {
+public class ConnectionInputBean implements Serializable {
   private String username;
   private String password;
   private String port;
   private String host;
   private String database;
+  private String outputPath;
   @Builder.Default private List<String> tableslist = new ArrayList<>();
 }

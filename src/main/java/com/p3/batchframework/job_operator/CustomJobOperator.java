@@ -1,16 +1,17 @@
-package com.p3.batchframework.operations;
+package com.p3.batchframework.job_operator;
 
 import static com.p3.batchframework.utils.Constants.*;
 
 import com.p3.batchframework.persistence.models.StepExecutionEntity;
 import com.p3.batchframework.persistence.repository.StepExecutionRepository;
-import com.p3.batchframework.utils.MapperUtilsClusterTask;
 import java.time.LocalDateTime;
 import java.util.*;
 import lombok.NonNull;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.batch.core.*;
+import org.springframework.batch.core.configuration.JobRegistry;
+import org.springframework.batch.core.configuration.ListableJobLocator;
 import org.springframework.batch.core.converter.DefaultJobParametersConverter;
 import org.springframework.batch.core.converter.JobParametersConverter;
 import org.springframework.batch.core.explore.JobExplorer;
@@ -36,22 +37,19 @@ public class CustomJobOperator implements JobOperator, InitializingBean {
   private final JobExplorer jobExplorer;
   private final JobRepository jobRepository;
   private final JobParametersConverter jobParametersConverter = new DefaultJobParametersConverter();
-  private final Job job;
-  private final MapperUtilsClusterTask mapperUtils;
+  private final ListableJobLocator jobRegistry;
   private final StepExecutionRepository stepExecutionRepository;
 
   public CustomJobOperator(
       JobLauncher jobLauncher,
       JobExplorer jobExplorer,
       JobRepository jobRepository,
-      Job job,
-      MapperUtilsClusterTask mapperUtils,
+      JobRegistry jobRegistry,
       StepExecutionRepository stepExecutionRepository) {
     this.jobLauncher = jobLauncher;
     this.jobExplorer = jobExplorer;
     this.jobRepository = jobRepository;
-    this.job = job;
-    this.mapperUtils = mapperUtils;
+    this.jobRegistry = jobRegistry;
     this.stepExecutionRepository = stepExecutionRepository;
   }
 
@@ -74,7 +72,7 @@ public class CustomJobOperator implements JobOperator, InitializingBean {
     List<Long> list = new ArrayList<>();
     List<JobInstance> jobInstances = jobExplorer.getJobInstances(jobName, start, count);
     jobInstances.forEach(jobInstance -> list.add(jobInstance.getId()));
-    if (list.isEmpty() && !getTaskIds().contains(jobName)) {
+    if (list.isEmpty() && !jobRegistry.getJobNames().contains(jobName)) {
       throw new NoSuchJobException(
           (String.format("No such job (either in registry or in historical data): %s", jobName)));
     }
@@ -88,7 +86,7 @@ public class CustomJobOperator implements JobOperator, InitializingBean {
     jobExplorer
         .findRunningJobExecutions(jobName)
         .forEach(jobExecution -> set.add(jobExecution.getId()));
-    if (set.isEmpty() && !getTaskIds().contains(jobName)) {
+    if (set.isEmpty() && !jobRegistry.getJobNames().contains(jobName)) {
       throw new NoSuchJobException(
           String.format("No such job (either in registry or in historical data): %s", jobName));
     }
@@ -104,7 +102,7 @@ public class CustomJobOperator implements JobOperator, InitializingBean {
 
   @Override
   public @NonNull Long start(@NonNull String jobName, @NonNull Properties properties)
-      throws JobInstanceAlreadyExistsException, JobParametersInvalidException {
+      throws JobInstanceAlreadyExistsException, JobParametersInvalidException, NoSuchJobException {
     log.info("Checking status of job with name={}", jobName);
 
     JobParameters jobParameters = jobParametersConverter.getJobParameters(properties);
@@ -117,8 +115,10 @@ public class CustomJobOperator implements JobOperator, InitializingBean {
     }
 
     try {
-      // this job interface directly injected it will work only one job multiple jobs means use job
-      // register
+      // This job interface directly you can inject then It will work only one job; multiple jobs
+      // means use job register
+
+      Job job = jobRegistry.getJob(jobName);
       return jobLauncher.run(job, jobParameters).getId();
 
     } catch (JobExecutionAlreadyRunningException e) {
@@ -131,6 +131,8 @@ public class CustomJobOperator implements JobOperator, InitializingBean {
     } catch (JobInstanceAlreadyCompleteException e) {
       throw new UnexpectedJobExecutionException(
           String.format(ILLEGAL_STATE_MSG, JOB_ALREADY_COMPLETE, jobName, jobParameters), e);
+    } catch (NoSuchJobException e) {
+      throw new NoSuchJobException(e.getMessage());
     }
   }
 
@@ -139,7 +141,8 @@ public class CustomJobOperator implements JobOperator, InitializingBean {
       throws JobInstanceAlreadyCompleteException,
           NoSuchJobExecutionException,
           JobRestartException,
-          JobParametersInvalidException {
+          JobParametersInvalidException,
+          NoSuchJobException {
     log.info("Checking status of job execution with id={}", executionId);
     JobExecution jobExecution = findExecutionById(executionId);
     String jobName = jobExecution.getJobInstance().getJobName();
@@ -147,35 +150,24 @@ public class CustomJobOperator implements JobOperator, InitializingBean {
 
     log.info("Attempting to resume job with name={} and parameters={}", jobName, parameters);
     try {
-      String task = parameters.getString("TASK");
-      if (task != null) {
-        //        Task taskObj =
-        //            new
-        // ObjectMapper().readerFor(Task.class).readValue(parameters.getString("TASK"));
-        //        if (taskObj.getTaskDestination().equals("MOBIUS")) {
-        //          JobParametersBuilder builder = new JobParametersBuilder();
-        //          builder.addJobParameters(parameters);
-        //          builder.addDate("date", new Date());
-        //          return jobLauncher.run(job, builder.toJobParameters()).getId();
-        //        }
-      }
+      Job job = jobRegistry.getJob(jobName);
       if (jobExecution.getStatus() == BatchStatus.STARTED
           || jobExecution.getStatus() == BatchStatus.STARTING) {
         log.info("Job execution is already running, attempting to stop and restart.");
-        stopJobExecution(jobExecution, parameters);
+        stopJobExecution(jobExecution, parameters, job);
       }
+
       return jobLauncher.run(job, parameters).getId();
     } catch (JobExecutionAlreadyRunningException e) {
       throw new UnexpectedJobExecutionException(
           String.format(ILLEGAL_STATE_MSG, "job execution already running", jobName, parameters),
           e);
+    } catch (NoSuchJobException e) {
+      throw new NoSuchJobException(e.getMessage());
     }
-    //    catch (JsonProcessingException e) {
-    //      throw new RuntimeException(e);
-    //    }
   }
 
-  private void stopJobExecution(JobExecution jobExecution, JobParameters parameters) {
+  private void stopJobExecution(JobExecution jobExecution, JobParameters parameters, Job job) {
     JobExecution lastExecution = jobRepository.getLastJobExecution(job.getName(), parameters);
     if (lastExecution != null) {
       BatchStatus status = lastExecution.getStatus();
@@ -199,15 +191,11 @@ public class CustomJobOperator implements JobOperator, InitializingBean {
   }
 
   @Override
-  public Long startNextInstance(String jobName)
-      throws NoSuchJobException,
-          JobParametersNotFoundException,
-          JobExecutionAlreadyRunningException,
-          JobInstanceAlreadyCompleteException,
-          UnexpectedJobExecutionException,
-          JobParametersInvalidException {
-    log.info("Locating parameters for next instance of job with name=" + jobName);
+  public @NonNull Long startNextInstance(@NonNull String jobName)
+      throws UnexpectedJobExecutionException, JobParametersInvalidException, NoSuchJobException {
+    log.info("Locating parameters for next instance of job with name={}", jobName);
 
+    Job job = jobRegistry.getJob(jobName);
     JobParameters parameters =
         new JobParametersBuilder(jobExplorer).getNextJobParameters(job).toJobParameters();
 
@@ -230,7 +218,7 @@ public class CustomJobOperator implements JobOperator, InitializingBean {
   public boolean stop(long executionId)
       throws NoSuchJobExecutionException, JobExecutionNotRunningException {
     JobExecution jobExecution = findExecutionById(executionId);
-    // Indicate the execution should be stopped by setting it's status to
+    // Indicate the execution should be stopped by setting its status to
     // 'STOPPING'. It is assumed that
     // the step implementation will check this status at chunk boundaries.
     BatchStatus status = jobExecution.getStatus();
@@ -240,11 +228,18 @@ public class CustomJobOperator implements JobOperator, InitializingBean {
     }
     jobExecution.setStatus(BatchStatus.STOPPING);
     jobRepository.update(jobExecution);
+    String jobName = jobExecution.getJobInstance().getJobName();
 
-    if (job
-        instanceof
-        StepLocator) { // can only process as StepLocator is the only way to get the step object
-      // get the current stepExecution
+    Job job;
+    try {
+      job = jobRegistry.getJob(jobName);
+    } catch (NoSuchJobException e) {
+      throw new RuntimeException(e);
+    }
+
+    if (job instanceof StepLocator) {
+      // can only process as StepLocator is the only way to get the step object
+      // to get the current stepExecution
       for (StepExecution stepExecution : jobExecution.getStepExecutions()) {
         if (stepExecution.getStatus().isRunning()) {
           try {
@@ -268,53 +263,13 @@ public class CustomJobOperator implements JobOperator, InitializingBean {
 
   @SneakyThrows
   @Override
-  public String getSummary(long executionId) throws NoSuchJobExecutionException {
+  public @NonNull String getSummary(long executionId) {
     JobExecution jobExecution = findExecutionById(executionId);
-    JobParameters parameters = jobExecution.getJobParameters();
-    String taskId = parameters.getString(TaskConstants.TASKID);
-    Optional<Task> taskOptional = taskRepository.findById(taskId);
-    if (taskOptional.isEmpty()) {
-      throw new NoSuchJobExecutionException("Task not found");
-    }
-    Map<String, TaskObject> taskObjectMap = taskOptional.get().getTaskObjectList();
-    TaskObject taskObjectInfo = taskObjectMap.get("Process");
-    if (taskObjectInfo.getTaskObjectDetails().equals("EXTRACTION")
-        || taskObjectInfo.getTaskObjectDetails().equals("CHARACTER_ANALYSIS")
-        || taskObjectInfo.getTaskObjectDetails().equals("EDB_INGESTION")
-        || taskObjectInfo.getTaskObjectDetails().equals("ARCHON_ARCHIVAL_INGESTION")) {
-      AdditionalInfo additionalInfo = taskOptional.get().getAdditionalInfo();
-      List<Long> executionIds = new ArrayList<>();
-      if (additionalInfo.getExecutionId() != null)
-        executionIds.addAll(additionalInfo.getExecutionId());
-      executionIds.add(executionId);
-      TaskMapperBean taskMapperBean = mapperUtils.map(taskOptional.get(), TaskMapperBean.class);
-      try {
-        reportSummary.generateReportSummary(taskMapperBean, executionIds, jobExecution);
-      } catch (Exception ex) {
-        log.error("Unexpected error Occurred: {}", ex.getMessage());
-        throw new Exception(ex);
-      }
-    } else if (taskObjectInfo.getTaskObjectDetails().equals("PRE_ANALYSIS")
-        || taskObjectInfo.getTaskObjectDetails().equals("RE_ANALYSIS")) {
-      AdditionalInfo additionalInfo = taskOptional.get().getAdditionalInfo();
-      List<Long> executionIds = new ArrayList<>();
-      if (additionalInfo.getExecutionId() != null)
-        executionIds.addAll(additionalInfo.getExecutionId());
-      executionIds.add(executionId);
-      TaskMapperBean taskMapperBean = mapperUtils.map(taskOptional.get(), TaskMapperBean.class);
-      try {
-        preAnalysisReportSummary.generatePreAnalysisReportSummary(
-            taskMapperBean, executionIds, jobExecution);
-      } catch (Exception ex) {
-        log.error("Unexpected error Occurred: {}", ex.getMessage());
-        throw new Exception(ex);
-      }
-    }
     return jobExecution.toString();
   }
 
   @Override
-  public Map<Long, String> getStepExecutionSummaries(long executionId)
+  public @NonNull Map<Long, String> getStepExecutionSummaries(long executionId)
       throws NoSuchJobExecutionException {
     JobExecution jobExecution = findExecutionById(executionId);
 
@@ -326,12 +281,12 @@ public class CustomJobOperator implements JobOperator, InitializingBean {
   }
 
   @Override
-  public Set<String> getJobNames() {
-    return Set.of();
+  public @NonNull Set<String> getJobNames() {
+    return new TreeSet<>(jobRegistry.getJobNames());
   }
 
   @Override
-  public JobExecution abandon(long jobExecutionId)
+  public @NonNull JobExecution abandon(long jobExecutionId)
       throws NoSuchJobExecutionException, JobExecutionAlreadyRunningException {
     JobExecution jobExecution = findExecutionById(jobExecutionId);
 
@@ -340,7 +295,7 @@ public class CustomJobOperator implements JobOperator, InitializingBean {
           "JobExecution is running or complete and therefore cannot be aborted");
     }
 
-    log.info("Aborting job execution: " + jobExecution);
+    log.info("Aborting job execution: {}", jobExecution);
     jobExecution.upgradeStatus(BatchStatus.ABANDONED);
     jobExecution.setEndTime(LocalDateTime.now());
     jobRepository.update(jobExecution);
@@ -361,9 +316,5 @@ public class CustomJobOperator implements JobOperator, InitializingBean {
     Assert.notNull(jobLauncher, "JobLauncher must be provided");
     Assert.notNull(jobExplorer, "JobExplorer must be provided");
     Assert.notNull(jobRepository, "JobRepository must be provided");
-  }
-
-  public List<String> getTaskIds() {
-    return null;
   }
 }

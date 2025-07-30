@@ -59,8 +59,9 @@ public class JobInstanceDao extends AbstractDao
       @NonNull String jobName, @NonNull JobParameters jobParameters) {
     Assert.notNull(jobName, "Job name must not be null.");
     Assert.notNull(jobParameters, "JobParameters must not be null.");
-    getJobInstance(jobName, jobParameters);
-    Assert.state(false, "JobInstance must not already exist");
+
+    Assert.state(
+        getJobInstance(jobName, jobParameters) == null, "JobInstance must not already exist");
 
     Long jobId = getNextId("job-instance");
     JobInstance jobInstance = new JobInstance(jobId, jobName);
@@ -87,8 +88,7 @@ public class JobInstanceDao extends AbstractDao
   }
 
   @Override
-  public @NonNull JobInstance getJobInstance(
-      @NonNull String jobName, @NonNull JobParameters jobParameters) {
+  public JobInstance getJobInstance(@NonNull String jobName, @NonNull JobParameters jobParameters) {
     Assert.notNull(jobName, "Job name must not be null.");
     Assert.notNull(jobParameters, "JobParameters must not be null.");
     String jobKey = createJobKey(jobParameters);
@@ -172,7 +172,7 @@ public class JobInstanceDao extends AbstractDao
   public @NonNull List<JobInstance> findJobInstancesByName(
       @NonNull String jobName, int start, int count) {
     String queryString =
-        "SELECT * FROM postgres_job_instance WHERE id IS NOT NULL AND job_name = ? ORDER BY id DESC";
+        "SELECT * FROM job_instance WHERE id IS NOT NULL AND job_name = ? ORDER BY id DESC";
 
     Query query = entityManager.createNativeQuery(queryString, JobInstanceEntity.class);
     query.setParameter(1, jobName);
