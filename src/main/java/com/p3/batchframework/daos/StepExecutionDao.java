@@ -14,6 +14,11 @@ import jakarta.persistence.criteria.CriteriaBuilder;
 import jakarta.persistence.criteria.CriteriaQuery;
 import jakarta.persistence.criteria.Predicate;
 import jakarta.persistence.criteria.Root;
+
+import java.sql.Timestamp;
+import java.sql.Types;
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.List;
 import lombok.NonNull;
@@ -69,8 +74,7 @@ public class StepExecutionDao extends AbstractDao
     Assert.isNull(
         stepExecution.getVersion(),
         "to-be-saved (not updated) StepExecution can't already have a version assigned");
-
-    validateStepExecution(stepExecution);
+     validateStepExecution(stepExecution);
 
     stepExecution.setId(getNextId("step_execution"));
     stepExecution.incrementVersion();
@@ -253,7 +257,7 @@ public class StepExecutionDao extends AbstractDao
   private void validateStepExecution(StepExecution stepExecution) {
     Assert.notNull(stepExecution, "StepExecution cannot be null.");
     Assert.notNull(stepExecution.getStepName(), "StepExecution step name cannot be null.");
-    Assert.notNull(stepExecution.getStartTime(), "StepExecution start time cannot be null.");
+    Assert.notNull(stepExecution.getCreateTime(), "StepExecution create time cannot be null.");
     Assert.notNull(stepExecution.getStatus(), "StepExecution status cannot be null.");
   }
 

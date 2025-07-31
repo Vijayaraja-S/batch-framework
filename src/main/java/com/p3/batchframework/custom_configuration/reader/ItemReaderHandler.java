@@ -14,10 +14,8 @@ import org.springframework.batch.item.ItemStreamException;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.jdbc.DataSourceBuilder;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.stereotype.Component;
 
 @Slf4j
-@Component("ItemReaderHandler")
 public class ItemReaderHandler<T> extends AbstractItemReaderHandler<T> {
 
   private final ConnectionInputBean inputBean;
@@ -26,6 +24,7 @@ public class ItemReaderHandler<T> extends AbstractItemReaderHandler<T> {
   private Iterator<Map<String, Object>> resultIterator;
   private List<String> partitionTables;
   private int currentTableIndex = 0;
+  private String currentTableName = null;
 
   public ItemReaderHandler(
       @Value("#{jobParameters['inputBean']}") String inputBeanString,
@@ -66,16 +65,21 @@ public class ItemReaderHandler<T> extends AbstractItemReaderHandler<T> {
     this.jdbcTemplate = new JdbcTemplate(dataSource);
 
     loadNextTableData();
+    if (currentTableName != null) {
+      executionContext.put("currentTable", currentTableName);
+    }
   }
 
   private void loadNextTableData() {
     while (currentTableIndex < partitionTables.size()) {
       String table = partitionTables.get(currentTableIndex);
       log.info("Reading table: {}", table);
+
       List<Map<String, Object>> results = jdbcTemplate.queryForList("SELECT * FROM " + table);
 
       if (!results.isEmpty()) {
         this.resultIterator = results.iterator();
+        this.currentTableName = table;
         currentTableIndex++;
         return;
       }
@@ -100,9 +104,13 @@ public class ItemReaderHandler<T> extends AbstractItemReaderHandler<T> {
   }
 
   @Override
-  public void update(@NonNull ExecutionContext executionContext) throws ItemStreamException {
+  public void update(@NonNull ExecutionContext executionContext) {
     log.info("Updating execution context...");
     executionContext.put("lastProcessedTableIndex", currentTableIndex);
+
+    if (currentTableName != null) {
+      executionContext.put("currentTable", currentTableName);
+    }
   }
 
   @Override

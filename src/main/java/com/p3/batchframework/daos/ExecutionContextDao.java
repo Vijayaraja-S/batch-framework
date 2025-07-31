@@ -115,7 +115,12 @@ public class ExecutionContextDao extends AbstractDao
     Map<String, Object> contextMap = buildContextMap(executionContext, jobExecutionId);
 
     byte[] contextBytes = commonUtility.convertMapToByteArray(contextMap, false);
-    String stringId = String.valueOf(stepExecutionId);
+    String stringId;
+    if (isStepContext){
+       stringId= String.valueOf(stepExecutionId);
+    }else {
+      stringId= String.valueOf(jobExecutionId);
+    }
 
     if (isStepContext) {
       saveOrUpdateStepContextEntity(stringId, contextBytes, jobExecutionId);

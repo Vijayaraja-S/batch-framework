@@ -15,16 +15,16 @@ import org.springframework.batch.item.Chunk;
 import org.springframework.batch.item.ExecutionContext;
 import org.springframework.batch.item.ItemStreamException;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.stereotype.Component;
 
 @Slf4j
-@Component("ItemWriterHandler")
 public class ItemWriterHandler<T> extends AbstractItemWriterHandler<T> {
 
   private final ConnectionInputBean inputBean;
   private final String backgroundJobId;
   private BufferedWriter writer;
   private boolean headerWritten = false;
+  private String currentTable;
+  private int recordCount = 0;
 
   public ItemWriterHandler(
           @Value("#{jobParameters['backgroundJobId']}") String backgroundJobId,
@@ -40,8 +40,14 @@ public class ItemWriterHandler<T> extends AbstractItemWriterHandler<T> {
 
   @Override
   public void open(@NonNull ExecutionContext executionContext) throws ItemStreamException {
+    currentTable = (String) executionContext.get("currentTable");
+    if (currentTable == null) {
+      throw new ItemStreamException("Missing currentTable in execution context");
+    }
+
     try {
-      String outputFilePath = inputBean.getOutputPath() + "/" + backgroundJobId + "_output.csv";
+      String outputFilePath =
+              inputBean.getOutputPath() + "/" + backgroundJobId + "_" + currentTable + "_output.csv";
       writer = Files.newBufferedWriter(Paths.get(outputFilePath));
     } catch (IOException e) {
       throw new ItemStreamException("Failed to open output file", e);
@@ -54,7 +60,7 @@ public class ItemWriterHandler<T> extends AbstractItemWriterHandler<T> {
       for (T item : chunk) {
         if (item instanceof Map<?, ?> mapItem) {
           if (!headerWritten) {
-            writer.write(String.join(",", (CharSequence) mapItem.keySet()));
+            writer.write(String.join(",", mapItem.keySet().stream().map(Object::toString).toList()));
             writer.newLine();
             headerWritten = true;
           }
@@ -63,6 +69,7 @@ public class ItemWriterHandler<T> extends AbstractItemWriterHandler<T> {
                   .collect(Collectors.joining(","));
           writer.write(row);
           writer.newLine();
+          recordCount++;
         }
       }
     } catch (IOException e) {
@@ -71,8 +78,8 @@ public class ItemWriterHandler<T> extends AbstractItemWriterHandler<T> {
   }
 
   @Override
-  public void update(@NonNull ExecutionContext executionContext) throws ItemStreamException {
-    // You can persist checkpoint info here if needed
+  public void update(@NonNull ExecutionContext executionContext) {
+    executionContext.put("recordsProcessedFor_" + currentTable, recordCount);
   }
 
   @Override
@@ -84,6 +91,6 @@ public class ItemWriterHandler<T> extends AbstractItemWriterHandler<T> {
     } catch (IOException e) {
       throw new ItemStreamException("Failed to close writer", e);
     }
+    log.info("Finished writing table: {}, records written: {}", currentTable, recordCount);
   }
 }
-

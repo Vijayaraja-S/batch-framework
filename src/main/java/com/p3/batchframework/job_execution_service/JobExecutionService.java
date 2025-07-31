@@ -2,11 +2,14 @@ package com.p3.batchframework.job_execution_service;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.p3.batchframework.job_execution_service.bean.ConnectionInputBean;
 import com.p3.batchframework.job_operator.CustomJobOperator;
 import com.p3.batchframework.persistence.models.BGStatus;
 import com.p3.batchframework.persistence.models.BackgroundJobEntity;
 import com.p3.batchframework.persistence.repository.BackgroundJobEntityRepository;
-import com.p3.batchframework.job_execution_service.bean.ConnectionInputBean;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.util.Base64;
 import java.util.List;
 import java.util.Properties;
 import lombok.RequiredArgsConstructor;
@@ -30,7 +33,10 @@ public class JobExecutionService {
   }
 
   public Long initJob(BackgroundJobEntity backgroundJobEntity)
-      throws JobInstanceAlreadyExistsException, JobParametersInvalidException, NoSuchJobException {
+      throws JobInstanceAlreadyExistsException,
+          JobParametersInvalidException,
+          NoSuchJobException,
+          IOException {
     ConnectionInputBean inputBean = getInputBean(backgroundJobEntity);
     Properties properties = prepareJobParameter(inputBean, backgroundJobEntity.getId());
     return customJobOperator.start("partitionJob", properties);
@@ -40,7 +46,9 @@ public class JobExecutionService {
     Properties properties = new Properties();
     try {
       String inputBeanString = objectMapper.writeValueAsString(inputBean);
-      properties.put("inputBean", inputBeanString);
+      String base64InputBean =
+          Base64.getEncoder().encodeToString(inputBeanString.getBytes(StandardCharsets.UTF_8));
+      properties.put("inputBean", base64InputBean);
       properties.put("backgroundJobId", id);
     } catch (JsonProcessingException e) {
       throw new RuntimeException("Error serializing input bean", e);
@@ -48,7 +56,8 @@ public class JobExecutionService {
     return properties;
   }
 
-  private ConnectionInputBean getInputBean(BackgroundJobEntity backgroundJobEntity) {
-    return objectMapper.convertValue(backgroundJobEntity.getJobInput(), ConnectionInputBean.class);
+  private ConnectionInputBean getInputBean(BackgroundJobEntity backgroundJobEntity)
+      throws IOException {
+    return objectMapper.readValue(backgroundJobEntity.getJobInput(), ConnectionInputBean.class);
   }
 }

@@ -13,7 +13,6 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 @Slf4j
-@Component("ItemProcessorHandler")
 public class ItemProcessorHandler<I, O> extends AbstractItemProcessorHandler<I, O> {
 
   private final ConnectionInputBean inputBean;

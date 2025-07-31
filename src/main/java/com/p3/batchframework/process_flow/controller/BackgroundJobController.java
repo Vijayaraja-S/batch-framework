@@ -8,7 +8,8 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
-@RestController("/app/background-job")
+@RestController
+@RequestMapping("/app/background-job")
 @RequiredArgsConstructor
 public class BackgroundJobController {
   private final BackGroundJobService backGroundJobService;

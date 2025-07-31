@@ -8,7 +8,7 @@ import org.springframework.batch.item.ExecutionContext;
 
 @Slf4j
 public abstract class AbstractPartitionHandler implements CustomPartitioner {
-  /** sample partition with based on grid size */
+  /** sample example partition with based on grid size */
   @Override
   public @NonNull Map<String, ExecutionContext> partition(int gridSize) {
     Map<String, ExecutionContext> result = new HashMap<>();
