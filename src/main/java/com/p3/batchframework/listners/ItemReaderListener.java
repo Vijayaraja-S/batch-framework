@@ -16,8 +16,6 @@ public class ItemReaderListener<I> implements ItemReadListener<I> {
   @Override
   public void afterRead(@NonNull I input) {
     log.info("In itemReaderResultListener afterRead");
-    String formName = (String) input;
-    log.info(formName);
   }
 
   @Override

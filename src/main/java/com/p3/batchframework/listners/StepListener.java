@@ -22,12 +22,13 @@ public class StepListener implements StepExecutionListener {
     ExecutionContext jobContext = stepExecution.getJobExecution().getExecutionContext();
     ExecutionContext stepContext = stepExecution.getExecutionContext();
 
-    int recordCount = stepContext.getInt("recordsProcessedFor_", 0);
-    String tableName = stepContext.getString("tableName");
-    String backgroundJobId = stepContext.getString("backgroundJobId");
-
-    jobContext.putInt("recordsProcessedFor_" + tableName, recordCount);
-    jobContext.putString("backgroundJobId", backgroundJobId);
+    if (!stepExecution.getStepName().equalsIgnoreCase("partitionedMasterStep")) {
+      String tableName = stepContext.getString("currentTable");
+      int recordCount = stepContext.getInt("recordsProcessedFor_" + tableName, 0);
+      String backgroundJobId = stepContext.getString("backgroundJobId");
+      jobContext.putInt("recordsProcessedFor_" + tableName, recordCount);
+      jobContext.putString("backgroundJobId", backgroundJobId);
+    }
 
     log.info("In stepResultListener afterStep");
     List<Throwable> exceptions = stepExecution.getFailureExceptions();

@@ -7,6 +7,7 @@ import java.io.BufferedWriter;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Paths;
+import java.util.Date;
 import java.util.Map;
 import java.util.stream.Collectors;
 import lombok.NonNull;
@@ -27,8 +28,8 @@ public class ItemWriterHandler<T> extends AbstractItemWriterHandler<T> {
   private int recordCount = 0;
 
   public ItemWriterHandler(
-          @Value("#{jobParameters['backgroundJobId']}") String backgroundJobId,
-          @Value("#{jobParameters['inputBean']}") String inputBeanString) {
+      @Value("#{jobParameters['backgroundJobId']}") String backgroundJobId,
+      @Value("#{jobParameters['inputBean']}") String inputBeanString) {
     ObjectMapper objectMapper = new ObjectMapper();
     try {
       this.inputBean = objectMapper.readValue(inputBeanString, ConnectionInputBean.class);
@@ -47,7 +48,7 @@ public class ItemWriterHandler<T> extends AbstractItemWriterHandler<T> {
 
     try {
       String outputFilePath =
-              inputBean.getOutputPath() + "/" + backgroundJobId + "_" + currentTable + "_output.csv";
+          inputBean.getOutputPath() + "/" + currentTable + "_" + new Date().getTime() + "_output.csv";
       writer = Files.newBufferedWriter(Paths.get(outputFilePath));
     } catch (IOException e) {
       throw new ItemStreamException("Failed to open output file", e);
@@ -60,11 +61,13 @@ public class ItemWriterHandler<T> extends AbstractItemWriterHandler<T> {
       for (T item : chunk) {
         if (item instanceof Map<?, ?> mapItem) {
           if (!headerWritten) {
-            writer.write(String.join(",", mapItem.keySet().stream().map(Object::toString).toList()));
+            writer.write(
+                String.join(",", mapItem.keySet().stream().map(Object::toString).toList()));
             writer.newLine();
             headerWritten = true;
           }
-          String row = mapItem.values().stream()
+          String row =
+              mapItem.values().stream()
                   .map(val -> val != null ? val.toString() : "")
                   .collect(Collectors.joining(","));
           writer.write(row);

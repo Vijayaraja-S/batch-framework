@@ -36,9 +36,11 @@ public class JobListener implements JobExecutionListener {
         totalTablesProcessed,
         totalRecordsProcessed);
     String backgroundJobId = ctx.getString("backgroundJobId");
-    backgroundJobEntityRepository
-        .findById(backgroundJobId)
-        .ifPresent(backgroundJobEntity -> backgroundJobEntity.setStatus(BGStatus.COMPLETED));
+    backgroundJobEntityRepository.findById(backgroundJobId)
+            .map(backgroundJobEntity -> {
+              backgroundJobEntity.setStatus(BGStatus.COMPLETED);
+              return backgroundJobEntityRepository.save(backgroundJobEntity);
+            });
   }
 
   @Override
