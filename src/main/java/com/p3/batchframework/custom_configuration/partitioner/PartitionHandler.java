@@ -54,7 +54,7 @@ public class PartitionHandler extends AbstractPartitionHandler {
       result.put("partition" + i, context);
     }
 
-    return result;
+      return result;
   }
 
 }

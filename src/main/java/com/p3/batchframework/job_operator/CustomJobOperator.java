@@ -115,9 +115,6 @@ public class CustomJobOperator implements JobOperator, InitializingBean {
     }
 
     try {
-      // This job interface directly you can inject then It will work only one job; multiple jobs
-      // means use job register
-
       Job job = jobRegistry.getJob(jobName);
       return jobLauncher.run(job, jobParameters).getId();
 

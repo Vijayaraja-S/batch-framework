@@ -46,8 +46,11 @@ public class JobExecutionService {
     Properties properties = new Properties();
     try {
       String inputBeanString = objectMapper.writeValueAsString(inputBean);
+
+      // To avoid ('@',&,$....) special character serialization issue
       String base64InputBean =
           Base64.getEncoder().encodeToString(inputBeanString.getBytes(StandardCharsets.UTF_8));
+
       properties.put("inputBean", base64InputBean);
       properties.put("backgroundJobId", id);
     } catch (JsonProcessingException e) {
